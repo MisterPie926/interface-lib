@@ -152,6 +152,7 @@ function ShadowLib:CreateWindow(title)
     tabList.Padding         = UDim.new(0, 2)
     tabList.SortOrder       = Enum.SortOrder.LayoutOrder
     tabList.Parent          = tabPanel
+    tabList.Wrap = true
 
     -- Контент-зона
     local contentZone = Instance.new("Frame")

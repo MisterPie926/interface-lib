@@ -1,33 +1,25 @@
--- ╔══════════════════════════════════════════════════════╗
--- ║          SHADOW UI LIBRARY  •  by Claude             ║
--- ║   Minimalist • Black/Red • Italic Bold Purple Text   ║
--- ╚══════════════════════════════════════════════════════╝
-
 local ShadowLib = {}
 ShadowLib.__index = ShadowLib
 
--- ── Константы стиля ──────────────────────────────────────
 local COLORS = {
-    BG          = Color3.fromRGB(10,  10,  10),   -- Основной фон (почти чёрный)
-    PANEL       = Color3.fromRGB(18,  18,  18),   -- Панель
-    BORDER      = Color3.fromRGB(180,  0,   0),   -- Красная обводка
-    ACCENT      = Color3.fromRGB(220,  0,   0),   -- Красный акцент (кнопки активны)
-    ACCENT_OFF  = Color3.fromRGB(60,  10,  10),   -- Тёмно-красный (выключено)
-    SLIDER_FILL = Color3.fromRGB(200,  0,   0),   -- Заполнение слайдера
-    SLIDER_BG   = Color3.fromRGB(35,  10,  10),   -- Фон слайдера
-    TAB_ACTIVE  = Color3.fromRGB(160,  0,   0),   -- Активный таб
-    TAB_IDLE    = Color3.fromRGB(28,  28,  28),   -- Неактивный таб
-    TEXT        = Color3.fromRGB(160, 80, 220),   -- Фиолетовый текст
-    TEXT_STROKE = Color3.fromRGB(240, 200,   0),  -- Жёлтая обводка текста
+    BG          = Color3.fromRGB(10,  10,  10),
+    PANEL       = Color3.fromRGB(18,  18,  18),
+    BORDER      = Color3.fromRGB(180,  0,   0),
+    ACCENT      = Color3.fromRGB(220,  0,   0),
+    ACCENT_OFF  = Color3.fromRGB(60,  10,  10),
+    SLIDER_FILL = Color3.fromRGB(200,  0,   0),
+    SLIDER_BG   = Color3.fromRGB(35,  10,  10),
+    TAB_ACTIVE  = Color3.fromRGB(160,  0,   0),
+    TAB_IDLE    = Color3.fromRGB(28,  28,  28),
+    TEXT        = Color3.fromRGB(160, 80, 220),
+    TEXT_STROKE = Color3.fromRGB(240, 200,   0),
 }
 
-local FONT        = Enum.Font.GothamBold          -- Жирный шрифт (ближайший к italic+bold в Roblox)
+local FONT        = Enum.Font.GothamBold
 local TEXT_SIZE   = 14
 local STROKE_W    = 1.5
-local CORNER_R    = UDim.new(0, 4)                -- Лёгкое скругление (минимализм)
+local CORNER_R    = UDim.new(0, 4)
 local TWEEN_TIME  = 0.12
-
--- ── Вспомогательные функции ───────────────────────────────
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -60,12 +52,10 @@ local function makeLabel(parent, text, size, xAlign)
     lbl.TextSize  = size or TEXT_SIZE
     lbl.TextColor3 = COLORS.TEXT
     lbl.TextXAlignment = xAlign or Enum.TextXAlignment.Left
-    lbl.TextItalic = true   -- курсив
     lbl.RichText  = false
     lbl.Size      = UDim2.new(1, 0, 1, 0)
     lbl.Parent    = parent
 
-    -- Жёлтая обводка 1.5 px
     local stroke = Instance.new("UIStroke")
     stroke.Color     = COLORS.TEXT_STROKE
     stroke.Thickness = STROKE_W
@@ -74,24 +64,19 @@ local function makeLabel(parent, text, size, xAlign)
     return lbl
 end
 
--- ══════════════════════════════════════════════════════════
---  ShadowLib:CreateWindow(title)
---  Создаёт главное окно. Возвращает объект Window.
--- ══════════════════════════════════════════════════════════
 function ShadowLib:CreateWindow(title)
     local Window = {}
     Window._tabs     = {}
     Window._tabBtns  = {}
     Window._activeTab = nil
+    Window._isOpen   = true
 
-    -- ScreenGui
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name             = "ShadowUI"
     screenGui.ResetOnSpawn     = false
     screenGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
     screenGui.Parent           = Players.LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Главная рамка
     local main = Instance.new("Frame")
     main.Name             = "Main"
     main.Size             = UDim2.new(0, 420, 0, 340)
@@ -102,7 +87,6 @@ function ShadowLib:CreateWindow(title)
     makeCorner(main, UDim.new(0, 6))
     makeStroke(main, COLORS.BORDER, 1.5)
 
-    -- Заголовок
     local titleBar = Instance.new("Frame")
     titleBar.Name             = "TitleBar"
     titleBar.Size             = UDim2.new(1, 0, 0, 34)
@@ -111,7 +95,6 @@ function ShadowLib:CreateWindow(title)
     titleBar.Parent           = main
     makeCorner(titleBar, UDim.new(0, 6))
 
-    -- Нижние углы заголовка — перекрываем скругление
     local titleFix = Instance.new("Frame")
     titleFix.Size             = UDim2.new(1, 0, 0, 10)
     titleFix.Position         = UDim2.new(0, 0, 1, -10)
@@ -123,7 +106,6 @@ function ShadowLib:CreateWindow(title)
     titleLbl.Size = UDim2.new(1, -40, 1, 0)
     titleLbl.Position = UDim2.new(0, 10, 0, 0)
 
-    -- Красная линия под заголовком
     local divider = Instance.new("Frame")
     divider.Size             = UDim2.new(1, 0, 0, 1)
     divider.Position         = UDim2.new(0, 0, 0, 34)
@@ -131,7 +113,6 @@ function ShadowLib:CreateWindow(title)
     divider.BorderSizePixel  = 0
     divider.Parent           = main
 
-    -- Панель табов (слева)
     local tabPanel = Instance.new("Frame")
     tabPanel.Name             = "TabPanel"
     tabPanel.Size             = UDim2.new(0, 110, 1, -35)
@@ -140,7 +121,6 @@ function ShadowLib:CreateWindow(title)
     tabPanel.BorderSizePixel  = 0
     tabPanel.Parent           = main
 
-    -- Правая граница панели табов
     local tabDivider = Instance.new("Frame")
     tabDivider.Size             = UDim2.new(0, 1, 1, 0)
     tabDivider.Position         = UDim2.new(1, 0, 0, 0)
@@ -152,9 +132,7 @@ function ShadowLib:CreateWindow(title)
     tabList.Padding         = UDim.new(0, 2)
     tabList.SortOrder       = Enum.SortOrder.LayoutOrder
     tabList.Parent          = tabPanel
-    tabList.Wrap = true
 
-    -- Контент-зона
     local contentZone = Instance.new("Frame")
     contentZone.Name             = "ContentZone"
     contentZone.Size             = UDim2.new(1, -112, 1, -36)
@@ -163,7 +141,6 @@ function ShadowLib:CreateWindow(title)
     contentZone.BorderSizePixel  = 0
     contentZone.Parent           = main
 
-    -- Перетаскивание окна
     local dragging, dragStart, startPos
     titleBar.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -187,12 +164,32 @@ function ShadowLib:CreateWindow(title)
         end
     end)
 
-    -- ── Метод: AddTab ────────────────────────────────────
+    UserInputService.InputBegan:Connect(function(inp, gameProcessed)
+        if gameProcessed then return end
+        if inp.KeyCode == Enum.KeyCode.G then
+            Window._isOpen = not Window._isOpen
+            main.Visible = Window._isOpen
+        end
+    end)
+
+    function Window:Toggle()
+        Window._isOpen = not Window._isOpen
+        main.Visible = Window._isOpen
+    end
+
+    function Window:SetVisible(state)
+        Window._isOpen = state
+        main.Visible = state
+    end
+
+    function Window:IsOpen()
+        return Window._isOpen
+    end
+
     function Window:AddTab(name)
         local Tab = {}
         Tab._elements = {}
 
-        -- Кнопка таба
         local btn = Instance.new("TextButton")
         btn.Name             = name
         btn.Size             = UDim2.new(1, -2, 0, 30)
@@ -206,7 +203,6 @@ function ShadowLib:CreateWindow(title)
         local btnLbl = makeLabel(btn, name, 13, Enum.TextXAlignment.Center)
         btnLbl.Size = UDim2.new(1, 0, 1, 0)
 
-        -- Контент-фрейм таба
         local frame = Instance.new("ScrollingFrame")
         frame.Name                 = name .. "_Frame"
         frame.Size                 = UDim2.new(1, -10, 1, -10)
@@ -226,7 +222,6 @@ function ShadowLib:CreateWindow(title)
         listLayout.Parent     = frame
 
         local function activate()
-            -- Скрыть остальные табы
             for _, t in ipairs(Window._tabs) do
                 t._frame.Visible = false
             end
@@ -244,7 +239,6 @@ function ShadowLib:CreateWindow(title)
         Tab._list   = listLayout
         Tab._order  = 0
 
-        -- Первый таб активируется автоматически
         if #Window._tabs == 0 then
             task.defer(activate)
         end
@@ -252,7 +246,6 @@ function ShadowLib:CreateWindow(title)
         table.insert(Window._tabs,    Tab)
         table.insert(Window._tabBtns, btn)
 
-        -- ── Добавить элемент-обёртку (строку) ────────────
         local function newRow(h)
             local row = Instance.new("Frame")
             row.Size             = UDim2.new(1, -6, 0, h or 30)
@@ -264,7 +257,6 @@ function ShadowLib:CreateWindow(title)
             return row
         end
 
-        -- ── Tab:AddButton(text, callback) ─────────────────
         function Tab:AddButton(text, callback)
             local row = newRow(30)
 
@@ -297,7 +289,6 @@ function ShadowLib:CreateWindow(title)
             return btn2
         end
 
-        -- ── Tab:AddToggle(text, default, callback) ────────
         function Tab:AddToggle(text, default, callback)
             local row    = newRow(30)
             local state  = default or false
@@ -314,7 +305,6 @@ function ShadowLib:CreateWindow(title)
             lbl3.Size     = UDim2.new(1, -60, 1, 0)
             lbl3.Position = UDim2.new(0, 8, 0, 0)
 
-            -- Переключатель-пилюля
             local pillBG = Instance.new("Frame")
             pillBG.Size             = UDim2.new(0, 40, 0, 20)
             pillBG.Position         = UDim2.new(1, -48, 0.5, -10)
@@ -362,7 +352,6 @@ function ShadowLib:CreateWindow(title)
             return Toggle
         end
 
-        -- ── Tab:AddSlider(text, min, max, default, callback) ──
         function Tab:AddSlider(text, min, max, default, callback)
             min     = min     or 0
             max     = max     or 100
@@ -379,7 +368,6 @@ function ShadowLib:CreateWindow(title)
             makeCorner(bg)
             makeStroke(bg, COLORS.BORDER, 1)
 
-            -- Заголовок + значение
             local topRow = Instance.new("Frame")
             topRow.Size             = UDim2.new(1, 0, 0, 22)
             topRow.BackgroundTransparency = 1
@@ -394,7 +382,6 @@ function ShadowLib:CreateWindow(title)
             valLbl.Size     = UDim2.new(0, 36, 1, 0)
             valLbl.Position = UDim2.new(1, -40, 0, 0)
 
-            -- Трек слайдера
             local track = Instance.new("Frame")
             track.Size             = UDim2.new(1, -16, 0, 8)
             track.Position         = UDim2.new(0, 8, 0, 28)
@@ -404,7 +391,6 @@ function ShadowLib:CreateWindow(title)
             makeCorner(track, UDim.new(1, 0))
             makeStroke(track, COLORS.BORDER, 1)
 
-            -- Заполнение
             local fill = Instance.new("Frame")
             fill.Size             = UDim2.new((value - min) / (max - min), 0, 1, 0)
             fill.BackgroundColor3 = COLORS.SLIDER_FILL
@@ -412,7 +398,6 @@ function ShadowLib:CreateWindow(title)
             fill.Parent           = track
             makeCorner(fill, UDim.new(1, 0))
 
-            -- Ручка
             local thumb = Instance.new("Frame")
             thumb.Size             = UDim2.new(0, 12, 0, 12)
             thumb.Position         = UDim2.new((value - min) / (max - min), -6, 0.5, -6)
@@ -422,7 +407,6 @@ function ShadowLib:CreateWindow(title)
             thumb.Parent           = track
             makeCorner(thumb, UDim.new(1, 0))
 
-            -- Перетаскивание
             local sliding = false
 
             local function updateFromInput(inp)
@@ -467,7 +451,6 @@ function ShadowLib:CreateWindow(title)
             return Slider
         end
 
-        -- ── Tab:AddLabel(text) ────────────────────────────
         function Tab:AddLabel(text)
             local row = newRow(24)
             local bg  = Instance.new("Frame")
@@ -479,7 +462,6 @@ function ShadowLib:CreateWindow(title)
             return lbl
         end
 
-        -- ── Tab:AddSeparator() ────────────────────────────
         function Tab:AddSeparator()
             local row = newRow(10)
             local line = Instance.new("Frame")
@@ -493,7 +475,6 @@ function ShadowLib:CreateWindow(title)
         return Tab
     end
 
-    -- ── Window:Destroy() ─────────────────────────────────
     function Window:Destroy()
         screenGui:Destroy()
     end
@@ -502,58 +483,3 @@ function ShadowLib:CreateWindow(title)
 end
 
 return ShadowLib
-
---[[
-╔══════════════════════════════════════════════════════════╗
-║                   ПРИМЕР ИСПОЛЬЗОВАНИЯ                   ║
-╠══════════════════════════════════════════════════════════╣
-
-local ShadowLib = loadstring(game:HttpGet("URL_HERE"))()
--- или require(ShadowLib) если лежит в скриптах
-
-local win = ShadowLib:CreateWindow("☠ Shadow UI")
-
--- Таб 1: Боевые настройки
-local combatTab = win:AddTab("⚔ Бой")
-
-combatTab:AddLabel("Базовые параметры")
-combatTab:AddSeparator()
-
-combatTab:AddButton("Убить всех", function()
-    print("Атакуем!")
-end)
-
-local aimToggle = combatTab:AddToggle("Аимбот", false, function(state)
-    print("Аимбот:", state)
-end)
-
-local fovSlider = combatTab:AddSlider("FOV", 1, 100, 50, function(val)
-    print("FOV:", val)
-end)
-
--- Таб 2: Визуал
-local visualTab = win:AddTab("👁 Визуал")
-
-local espToggle = visualTab:AddToggle("ESP Игроки", true, function(state)
-    print("ESP:", state)
-end)
-
-local distSlider = visualTab:AddSlider("Дистанция", 1, 100, 75, function(val)
-    print("Дистанция:", val)
-end)
-
--- Таб 3: Прочее
-local miscTab = win:AddTab("⚙ Прочее")
-
-miscTab:AddButton("Телепорт к споуну", function()
-    print("Телепорт!")
-end)
-
-miscTab:AddSeparator()
-
-miscTab:AddButton("Закрыть меню", function()
-    win:Destroy()
-end)
-
-╚══════════════════════════════════════════════════════════╝
-]]

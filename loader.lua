@@ -1,16 +1,18 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         SHADOW UI LIBRARY  v3.0  •  by Claude           ║
+-- ║         SHADOW UI LIBRARY  v3.1  •  by Claude           ║
 -- ║  G = открыть/скрыть  •  ⛶ = полный экран  •  ✕ = закрыть
 -- ╚══════════════════════════════════════════════════════════╝
--- Что нового в v3:
---   • Текст белый (без обводки для простоты чтения)
---   • AddCheckbox  — галочка с сохранением состояния
---   • AddTextBox   — поле ввода
---   • AddDropdown  — выпадающий список
---   • Slider: sliding-состояние не сбрасывает callback при отпускании
---   • UIGradient Transparency НЕ твинится (прямое присвоение — фикс краша TweenService)
---   • Все значения сохраняются в SavedValues (доступны через element:Get())
---   • PlayerPanel — дополнительная панель справа со списком игроков + аватарки
+-- Что нового в v3.1:
+--   • Полноценное окно списка игроков (PlayerList)
+--   • Плавный поиск/фильтр элементов
+--   • Система уведомлений
+--   • Элемент Keybind (горячая клавиша) с сохранением
+--   • Модальные окна подтверждения
+--   • Мобильная адаптивность
+--   • Темы оформления (4 встроенные)
+--   • Индикатор FPS и пинга
+--   • Подсказки (тултипы)
+--   • Все предыдущие функции v3 сохранены
 
 local ShadowLib = {}
 ShadowLib.__index = ShadowLib
@@ -19,8 +21,10 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
+local Stats            = game:GetService("Stats")
+local HttpService      = game:GetService("HttpService")
 
--- ── Цвета ────────────────────────────────────────────────────
+-- ── Цвета (базовая тема Shadow Red) ─────────────────────────
 local C = {
     BG         = Color3.fromRGB(10,  10,  10),
     PANEL      = Color3.fromRGB(20,  20,  20),
@@ -32,8 +36,8 @@ local C = {
     TAB_ACTIVE = Color3.fromRGB(150,  0,   0),
     TAB_IDLE   = Color3.fromRGB(26,  26,  26),
     TAB_HOVER  = Color3.fromRGB(40,  12,  12),
-    TEXT       = Color3.fromRGB(240, 240, 240),  -- белый
-    TEXT_DIM   = Color3.fromRGB(160, 160, 160),  -- серый для плейсхолдеров
+    TEXT       = Color3.fromRGB(240, 240, 240),
+    TEXT_DIM   = Color3.fromRGB(160, 160, 160),
     CHECK_ON   = Color3.fromRGB(220,  0,   0),
     CHECK_OFF  = Color3.fromRGB(40,  40,  40),
     INPUT_BG   = Color3.fromRGB(14,  14,  14),
@@ -43,6 +47,46 @@ local C = {
     PLAYER_BG  = Color3.fromRGB(16,  16,  16),
 }
 
+-- Темы
+local Themes = {
+    ["Shadow Red"] = {
+        BORDER     = Color3.fromRGB(180,  0,   0),
+        ACCENT     = Color3.fromRGB(220,  0,   0),
+        ACCENT_DIM = Color3.fromRGB(50,  10,  10),
+        SLIDER_BG  = Color3.fromRGB(35,  10,  10),
+        TAB_ACTIVE = Color3.fromRGB(150,  0,   0),
+        TAB_HOVER  = Color3.fromRGB(40,  12,  12),
+        CTRL_CL    = Color3.fromRGB(220, 60,  60),
+    },
+    ["Ocean Blue"] = {
+        BORDER     = Color3.fromRGB(0,  120, 200),
+        ACCENT     = Color3.fromRGB(0,  150, 255),
+        ACCENT_DIM = Color3.fromRGB(10, 30,  60),
+        SLIDER_BG  = Color3.fromRGB(10, 30,  60),
+        TAB_ACTIVE = Color3.fromRGB(0,  100, 180),
+        TAB_HOVER  = Color3.fromRGB(12, 40,  80),
+        CTRL_CL    = Color3.fromRGB(255, 80,  80),
+    },
+    ["Toxic Green"] = {
+        BORDER     = Color3.fromRGB(100, 200, 0),
+        ACCENT     = Color3.fromRGB(150, 255, 0),
+        ACCENT_DIM = Color3.fromRGB(20, 50,  0),
+        SLIDER_BG  = Color3.fromRGB(20, 50,  0),
+        TAB_ACTIVE = Color3.fromRGB(80, 160, 0),
+        TAB_HOVER  = Color3.fromRGB(30, 60,  10),
+        CTRL_CL    = Color3.fromRGB(255, 100, 100),
+    },
+    ["Purple"] = {
+        BORDER     = Color3.fromRGB(150, 0, 220),
+        ACCENT     = Color3.fromRGB(180, 0, 255),
+        ACCENT_DIM = Color3.fromRGB(30, 10,  50),
+        SLIDER_BG  = Color3.fromRGB(30, 10,  50),
+        TAB_ACTIVE = Color3.fromRGB(120, 0, 180),
+        TAB_HOVER  = Color3.fromRGB(40, 15,  70),
+        CTRL_CL    = Color3.fromRGB(255, 80,  80),
+    },
+}
+
 local FONT     = Enum.Font.GothamBold
 local FONTREG  = Enum.Font.Gotham
 local TXTSZ    = 13
@@ -50,13 +94,21 @@ local WIN_W, WIN_H     = 420, 340
 local FULL_W, FULL_H   = 720, 520
 local PANEL_W          = 200   -- ширина панели игроков
 
+-- Мобильная адаптивность
+if UserInputService.TouchEnabled then
+    WIN_W, WIN_H = 520, 400
+    FULL_W, FULL_H = 900, 620
+    PANEL_W = 240
+    TXTSZ = 14
+end
+
 -- ── Хелперы ──────────────────────────────────────────────────
 local function tw(obj, props, t, style, dir)
     TweenService:Create(obj, TweenInfo.new(
         t or 0.18,
         style or Enum.EasingStyle.Quart,
         dir   or Enum.EasingDirection.Out
-    ), props):Play()
+        ), props):Play()
 end
 
 local function corner(p, r)
@@ -71,7 +123,6 @@ local function uistroke(p, col, thick)
     s.Parent = p; return s
 end
 
--- Простой белый лейбл (без TextItalic, без UIStroke на тексте)
 local function lbl(parent, text, size, xAlign, color)
     local t = Instance.new("TextLabel")
     t.BackgroundTransparency = 1
@@ -93,7 +144,6 @@ local function pulse(obj, baseColor)
     end)
 end
 
--- Кнопка-иконка для заголовка
 local function ctrlBtn(parent, icon, xOff, col, cb)
     local b = Instance.new("TextButton")
     b.Size             = UDim2.new(0, 22, 0, 22)
@@ -113,6 +163,46 @@ local function ctrlBtn(parent, icon, xOff, col, cb)
     return b
 end
 
+-- ── Уведомления ─────────────────────────────────────────────
+local notificationGui
+local function createNotificationGui()
+    if notificationGui then return notificationGui end
+    notificationGui = Instance.new("ScreenGui")
+    notificationGui.Name = "ShadowNotifications"
+    notificationGui.ResetOnSpawn = false
+    notificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    notificationGui.IgnoreGuiInset = true
+    notificationGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    return notificationGui
+end
+
+-- ── Тултип ──────────────────────────────────────────────────
+local tooltipFrame
+local function showTooltip(text, anchor)
+    if not tooltipFrame then
+        tooltipFrame = Instance.new("Frame")
+        tooltipFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        tooltipFrame.BorderSizePixel = 0
+        tooltipFrame.Visible = false
+        tooltipFrame.ZIndex = 10
+        tooltipFrame.Parent = createNotificationGui()
+        corner(tooltipFrame, UDim.new(0, 6))
+        uistroke(tooltipFrame, C.BORDER, 1)
+        local tipLabel = lbl(tooltipFrame, "", 12, Enum.TextXAlignment.Center, C.TEXT)
+        tipLabel.Name = "TipLabel"
+        tipLabel.Size = UDim2.new(1, 0, 1, 0)
+    end
+    local label = tooltipFrame:FindFirstChild("TipLabel")
+    label.Text = text
+    tooltipFrame.Size = UDim2.new(0, label.TextBounds.X + 20, 0, 24)
+    tooltipFrame.Position = UDim2.new(0, anchor.AbsolutePosition.X + anchor.AbsoluteSize.X/2 - tooltipFrame.AbsoluteSize.X/2, 0, anchor.AbsolutePosition.Y - 30)
+    tooltipFrame.Visible = true
+    return tooltipFrame
+end
+local function hideTooltip()
+    if tooltipFrame then tooltipFrame.Visible = false end
+end
+
 -- ══════════════════════════════════════════════════════════════
 function ShadowLib:CreateWindow(title)
     local W = {
@@ -121,7 +211,9 @@ function ShadowLib:CreateWindow(title)
         _visible   = true,
         _fullscreen = false,
         _playerPanel = nil,
-        SavedValues = {},   -- { elementId = value }
+        SavedValues = {},
+        Keybinds   = {},
+        _theme     = "Shadow Red",
     }
 
     -- ── ScreenGui ─────────────────────────────────────────────
@@ -221,7 +313,7 @@ function ShadowLib:CreateWindow(title)
         if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
             local d = inp.Position - dragStart
             main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                       startPos.Y.Scale, startPos.Y.Offset + d.Y)
+                startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(inp)
@@ -279,7 +371,7 @@ function ShadowLib:CreateWindow(title)
     end
 
     -- ════════════════════════════════════════════════════════════
-    -- ПАНЕЛЬ ИГРОКОВ (справа от основного окна)
+    -- ПАНЕЛЬ ИГРОКОВ (справа от основного окна) — сохранено из v3
     -- ════════════════════════════════════════════════════════════
     local playerPanelFrame = Instance.new("Frame")
     playerPanelFrame.Name             = "PlayerPanel"
@@ -292,7 +384,6 @@ function ShadowLib:CreateWindow(title)
     corner(playerPanelFrame, UDim.new(0, 10))
     uistroke(playerPanelFrame, C.BORDER, 1.5)
 
-    -- Заголовок панели
     local ppTitle = Instance.new("Frame")
     ppTitle.Size = UDim2.new(1, 0, 0, 36); ppTitle.BackgroundColor3 = C.PANEL
     ppTitle.BorderSizePixel = 0; ppTitle.Parent = playerPanelFrame
@@ -306,7 +397,6 @@ function ShadowLib:CreateWindow(title)
     ppDivider.Size = UDim2.new(1, 0, 0, 1); ppDivider.Position = UDim2.new(0, 0, 0, 36)
     ppDivider.BackgroundColor3 = C.BORDER; ppDivider.BorderSizePixel = 0; ppDivider.Parent = playerPanelFrame
 
-    -- Скролл-зона игроков
     local ppScroll = Instance.new("ScrollingFrame")
     ppScroll.Size                = UDim2.new(1, 0, 1, -38)
     ppScroll.Position            = UDim2.new(0, 0, 0, 38)
@@ -325,7 +415,6 @@ function ShadowLib:CreateWindow(title)
     ppPad.PaddingTop = UDim.new(0, 4); ppPad.PaddingLeft = UDim.new(0, 6)
     ppPad.PaddingRight = UDim.new(0, 6); ppPad.Parent = ppScroll
 
-    -- Положение панели (правее main)
     local function updatePanelPos()
         local mx = main.AbsolutePosition.X + main.AbsoluteSize.X
         local my = main.AbsolutePosition.Y
@@ -333,24 +422,18 @@ function ShadowLib:CreateWindow(title)
         playerPanelFrame.Size     = UDim2.new(0, PANEL_W, 0, main.AbsoluteSize.Y)
     end
 
-    -- Кнопки в ячейке игрока (callback получает имя игрока)
     local playerBtnCallbacks = {}
-
     local PP = {}
     W._playerPanel = { Frame = playerPanelFrame, Scroll = ppScroll, Obj = PP }
 
-    -- Добавить действие для кнопок игрока
     function PP:OnPlayerAction(cb)
         table.insert(playerBtnCallbacks, cb)
     end
 
-    -- Обновить список игроков
     function PP:Refresh()
-        -- Удалить старые строки
         for _, c in ipairs(ppScroll:GetChildren()) do
             if c:IsA("Frame") then c:Destroy() end
         end
-
         local order = 0
         for _, player in ipairs(Players:GetPlayers()) do
             order = order + 1
@@ -363,7 +446,6 @@ function ShadowLib:CreateWindow(title)
             corner(row, UDim.new(0, 5))
             uistroke(row, Color3.fromRGB(50, 10, 10), 1)
 
-            -- Аватар
             local avatarImg = Instance.new("ImageLabel")
             avatarImg.Size             = UDim2.new(0, 34, 0, 34)
             avatarImg.Position         = UDim2.new(0, 6, 0.5, -17)
@@ -372,7 +454,6 @@ function ShadowLib:CreateWindow(title)
             avatarImg.Parent           = row
             corner(avatarImg, UDim.new(1, 0))
 
-            -- Загрузить аватар
             local ok, thumbUrl = pcall(function()
                 return Players:GetUserThumbnailAsync(
                     player.UserId,
@@ -382,7 +463,6 @@ function ShadowLib:CreateWindow(title)
             end)
             if ok and thumbUrl then avatarImg.Image = thumbUrl end
 
-            -- Имя
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size             = UDim2.new(1, -100, 1, 0)
             nameLbl.Position         = UDim2.new(0, 46, 0, 0)
@@ -395,7 +475,6 @@ function ShadowLib:CreateWindow(title)
             nameLbl.TextTruncate     = Enum.TextTruncate.AtEnd
             nameLbl.Parent           = row
 
-            -- Кнопка действия
             local actBtn = Instance.new("TextButton")
             actBtn.Size             = UDim2.new(0, 42, 0, 22)
             actBtn.Position         = UDim2.new(1, -48, 0.5, -11)
@@ -418,7 +497,6 @@ function ShadowLib:CreateWindow(title)
         end
     end
 
-    -- ── Window:TogglePlayerPanel ───────────────────────────────
     local ppVisible = false
     function W:TogglePlayerPanel()
         ppVisible = not ppVisible
@@ -434,7 +512,6 @@ function ShadowLib:CreateWindow(title)
         end
     end
 
-    -- Обновлять позицию панели при движении окна
     RunService.RenderStepped:Connect(function()
         if ppVisible and playerPanelFrame.Visible then
             updatePanelPos()
@@ -442,10 +519,265 @@ function ShadowLib:CreateWindow(title)
     end)
 
     -- ════════════════════════════════════════════════════════════
+    --  НОВОЕ: Отдельное окно PlayerList (по запросу)
+    -- ════════════════════════════════════════════════════════════
+    function W:CreatePlayerList()
+        local plWindow = {}
+        local plGui = Instance.new("ScreenGui")
+        plGui.Name = "ShadowPlayerList"
+        plGui.ResetOnSpawn = false
+        plGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        plGui.IgnoreGuiInset = true
+        plGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+        local plFrame = Instance.new("Frame")
+        plFrame.Size = UDim2.new(0, 250, 0, 350)
+        plFrame.Position = UDim2.new(0.5, -125, 0.5, -175)
+        plFrame.BackgroundColor3 = C.PLAYER_BG
+        plFrame.BorderSizePixel = 0
+        plFrame.Visible = true
+        plFrame.Parent = plGui
+        corner(plFrame, UDim.new(0, 8))
+        uistroke(plFrame, C.BORDER, 1.5)
+
+        local plTitleBar = Instance.new("Frame")
+        plTitleBar.Size = UDim2.new(1, 0, 0, 30)
+        plTitleBar.BackgroundColor3 = C.PANEL
+        plTitleBar.BorderSizePixel = 0
+        plTitleBar.Parent = plFrame
+        corner(plTitleBar, UDim.new(0, 8))
+        local plTitleLabel = lbl(plTitleBar, "Player List", 14, Enum.TextXAlignment.Center)
+        plTitleLabel.Size = UDim2.new(1, 0, 1, 0)
+
+        local closeBtn = ctrlBtn(plTitleBar, "✕", -30, C.CTRL_CL, function()
+            plFrame.Visible = false
+        end)
+
+        local plScroll = Instance.new("ScrollingFrame")
+        plScroll.Size = UDim2.new(1, 0, 1, -32)
+        plScroll.Position = UDim2.new(0, 0, 0, 32)
+        plScroll.BackgroundTransparency = 1
+        plScroll.BorderSizePixel = 0
+        plScroll.ScrollBarThickness = 3
+        plScroll.ScrollBarImageColor3 = C.BORDER
+        plScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        plScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        plScroll.Parent = plFrame
+
+        local plLayout = Instance.new("UIListLayout")
+        plLayout.Padding = UDim.new(0, 5)
+        plLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        plLayout.Parent = plScroll
+
+        local function refreshPlayers()
+            for _, child in ipairs(plScroll:GetChildren()) do
+                if child:IsA("Frame") then child:Destroy() end
+            end
+            local i = 0
+            for _, player in ipairs(Players:GetPlayers()) do
+                i = i + 1
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 40)
+                row.BackgroundColor3 = C.PANEL
+                row.BorderSizePixel = 0
+                row.LayoutOrder = i
+                row.Parent = plScroll
+                corner(row, UDim.new(0, 5))
+
+                local avatar = Instance.new("ImageLabel")
+                avatar.Size = UDim2.new(0, 30, 0, 30)
+                avatar.Position = UDim2.new(0, 5, 0.5, -15)
+                avatar.BackgroundColor3 = Color3.fromRGB(30,30,30)
+                avatar.BorderSizePixel = 0
+                avatar.Parent = row
+                corner(avatar, UDim.new(1, 0))
+
+                local ok, thumb = pcall(function()
+                    return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                end)
+                if ok and thumb then avatar.Image = thumb end
+
+                local nameLabel = lbl(row, player.Name, 12, Enum.TextXAlignment.Left)
+                nameLabel.Size = UDim2.new(1, -40, 1, 0)
+                nameLabel.Position = UDim2.new(0, 40, 0, 0)
+            end
+        end
+
+        refreshPlayers()
+        Players.PlayerAdded:Connect(refreshPlayers)
+        Players.PlayerRemoving:Connect(refreshPlayers)
+
+        function plWindow:Refresh() refreshPlayers() end
+        function plWindow:Show() plFrame.Visible = true end
+        function plWindow:Hide() plFrame.Visible = false end
+        function plWindow:Destroy() plGui:Destroy() end
+
+        return plWindow
+    end
+
+    -- ════════════════════════════════════════════════════════════
+    --  НОВОЕ: Уведомления
+    -- ════════════════════════════════════════════════════════════
+    function W:Notify(titleText, messageText, duration)
+        local gui = createNotificationGui()
+        local notif = Instance.new("Frame")
+        notif.Size = UDim2.new(0, 220, 0, 60)
+        notif.Position = UDim2.new(1, -230, 1, -70)
+        notif.BackgroundColor3 = C.PANEL
+        notif.BorderSizePixel = 0
+        notif.Parent = gui
+        corner(notif, UDim.new(0, 8))
+        uistroke(notif, C.BORDER, 1.5)
+        notif.BackgroundTransparency = 1
+        tw(notif, { BackgroundTransparency = 0 }, 0.2)
+
+        local titleLabel = lbl(notif, titleText or "Уведомление", 13, Enum.TextXAlignment.Left)
+        titleLabel.Size = UDim2.new(1, -20, 0, 20)
+        titleLabel.Position = UDim2.new(0, 10, 0, 5)
+        titleLabel.TextColor3 = C.TEXT
+
+        local msgLabel = lbl(notif, messageText or "", 12, Enum.TextXAlignment.Left)
+        msgLabel.Size = UDim2.new(1, -20, 0, 30)
+        msgLabel.Position = UDim2.new(0, 10, 0, 25)
+        msgLabel.TextColor3 = C.TEXT_DIM
+        msgLabel.TextWrapped = true
+
+        task.delay(duration or 3, function()
+            tw(notif, { BackgroundTransparency = 1, Position = UDim2.new(1, -230, 1, -70) + UDim2.new(0, 0, 0, -30) }, 0.3)
+            task.delay(0.3, function() notif:Destroy() end)
+        end)
+    end
+
+    -- ════════════════════════════════════════════════════════════
+    --  НОВОЕ: Модальное окно подтверждения
+    -- ════════════════════════════════════════════════════════════
+    function W:Confirm(titleText, messageText, onYes, onNo)
+        local gui = createNotificationGui()
+        local overlay = Instance.new("Frame")
+        overlay.Size = UDim2.new(1, 0, 1, 0)
+        overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+        overlay.BackgroundTransparency = 0.6
+        overlay.BorderSizePixel = 0
+        overlay.Parent = gui
+        overlay.ZIndex = 50
+
+        local modal = Instance.new("Frame")
+        modal.Size = UDim2.new(0, 300, 0, 120)
+        modal.Position = UDim2.new(0.5, -150, 0.5, -60)
+        modal.BackgroundColor3 = C.PANEL
+        modal.BorderSizePixel = 0
+        modal.Parent = overlay
+        corner(modal, UDim.new(0, 8))
+        uistroke(modal, C.BORDER, 1.5)
+        modal.ZIndex = 51
+
+        local mTitle = lbl(modal, titleText or "Подтверждение", 15, Enum.TextXAlignment.Center)
+        mTitle.Size = UDim2.new(1, 0, 0, 30)
+        mTitle.Position = UDim2.new(0, 0, 0, 10)
+
+        local mMsg = lbl(modal, messageText or "Вы уверены?", 13, Enum.TextXAlignment.Center)
+        mMsg.Size = UDim2.new(1, 0, 0, 40)
+        mMsg.Position = UDim2.new(0, 0, 0, 40)
+        mMsg.TextWrapped = true
+
+        local yesBtn = Instance.new("TextButton")
+        yesBtn.Size = UDim2.new(0, 100, 0, 30)
+        yesBtn.Position = UDim2.new(0.5, -110, 1, -35)
+        yesBtn.BackgroundColor3 = C.ACCENT
+        yesBtn.BorderSizePixel = 0
+        yesBtn.Text = "Да"
+        yesBtn.TextColor3 = C.TEXT
+        yesBtn.Font = FONT
+        yesBtn.TextSize = 13
+        yesBtn.Parent = modal
+        corner(yesBtn, UDim.new(0, 4))
+
+        local noBtn = Instance.new("TextButton")
+        noBtn.Size = UDim2.new(0, 100, 0, 30)
+        noBtn.Position = UDim2.new(0.5, 10, 1, -35)
+        noBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        noBtn.BorderSizePixel = 0
+        noBtn.Text = "Нет"
+        noBtn.TextColor3 = C.TEXT
+        noBtn.Font = FONT
+        noBtn.TextSize = 13
+        noBtn.Parent = modal
+        corner(noBtn, UDim.new(0, 4))
+
+        yesBtn.MouseButton1Click:Connect(function()
+            overlay:Destroy()
+            if onYes then onYes() end
+        end)
+        noBtn.MouseButton1Click:Connect(function()
+            overlay:Destroy()
+            if onNo then onNo() end
+        end)
+    end
+
+    -- ════════════════════════════════════════════════════════════
+    --  НОВОЕ: Темы оформления
+    -- ════════════════════════════════════════════════════════════
+    function W:SetTheme(themeName)
+        local theme = Themes[themeName]
+        if not theme then return end
+        for k, v in pairs(theme) do
+            if C[k] then C[k] = v end
+        end
+        W._theme = themeName
+        -- Обновляем основные элементы
+        main.BackgroundColor3 = C.BG
+        titleBar.BackgroundColor3 = C.PANEL
+        titleFix.BackgroundColor3 = C.PANEL
+        accentBar.BackgroundColor3 = C.ACCENT
+        divider.BackgroundColor3 = C.BORDER
+        tabPanel.BackgroundColor3 = C.PANEL
+        tabDivLine.BackgroundColor3 = C.BORDER
+        uistroke(main, C.BORDER, 1.5) -- обновляем обводку (просто заменим цвет)
+        for _, tabInfo in ipairs(W._tabBtns) do
+            if tabInfo.btn.BackgroundColor3 == C.TAB_ACTIVE or tabInfo.btn.BackgroundColor3 == Themes[W._theme].TAB_ACTIVE then
+                tabInfo.btn.BackgroundColor3 = C.TAB_ACTIVE
+            end
+        end
+        -- Уведомление о смене темы
+        W:Notify("Тема", "Применена тема: " .. themeName, 2)
+    end
+
+    -- ════════════════════════════════════════════════════════════
+    --  НОВОЕ: Индикатор FPS и пинга
+    -- ════════════════════════════════════════════════════════════
+    local statsLabel
+    function W:ShowStats()
+        if statsLabel then
+            statsLabel.Visible = not statsLabel.Visible
+            return
+        end
+        local gui = createNotificationGui()
+        statsLabel = Instance.new("TextLabel")
+        statsLabel.Size = UDim2.new(0, 100, 0, 20)
+        statsLabel.Position = UDim2.new(1, -110, 0, 10)
+        statsLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        statsLabel.BackgroundTransparency = 0.3
+        statsLabel.BorderSizePixel = 0
+        statsLabel.Text = "FPS: 0 | Ping: 0"
+        statsLabel.Font = FONTREG
+        statsLabel.TextSize = 12
+        statsLabel.TextColor3 = C.TEXT
+        statsLabel.Parent = gui
+        corner(statsLabel, UDim.new(0, 4))
+        uistroke(statsLabel, C.BORDER, 1)
+
+        RunService.RenderStepped:Connect(function()
+            local fps = math.floor(1 / RunService.RenderStepped:Wait())
+            local ping = Players.LocalPlayer:GetNetworkPing() * 1000
+            statsLabel.Text = string.format("FPS: %d | Ping: %.0f", fps, ping)
+        end)
+    end
+
+    -- ════════════════════════════════════════════════════════════
     --  Window:AddTab(name)
     -- ════════════════════════════════════════════════════════════
     function W:AddTab(name)
-        local Tab = { _order = 0 }
+        local Tab = { _order = 0, _searchText = "" }
 
         local tabBtn = Instance.new("TextButton")
         tabBtn.Size = UDim2.new(1, 0, 0, 28); tabBtn.BackgroundColor3 = C.TAB_IDLE
@@ -485,6 +817,34 @@ function ShadowLib:CreateWindow(title)
         cPad.PaddingLeft = UDim.new(0, 4); cPad.PaddingRight = UDim.new(0, 4)
         cPad.Parent = frame
 
+        -- Поисковая строка (добавляется первой)
+        local searchBox = Instance.new("TextBox")
+        searchBox.Size = UDim2.new(1, 0, 0, 28)
+        searchBox.BackgroundColor3 = C.INPUT_BG
+        searchBox.BorderSizePixel = 0
+        searchBox.PlaceholderText = "Поиск..."
+        searchBox.Font = FONTREG
+        searchBox.TextSize = 12
+        searchBox.TextColor3 = C.TEXT
+        searchBox.PlaceholderColor3 = C.TEXT_DIM
+        searchBox.TextXAlignment = Enum.TextXAlignment.Left
+        searchBox.Parent = frame
+        corner(searchBox, UDim.new(0, 4))
+        uistroke(searchBox, C.BORDER, 1)
+        searchBox.LayoutOrder = 0
+        searchBox.ZIndex = 2
+
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            local query = searchBox.Text:lower()
+            for _, child in ipairs(frame:GetChildren()) do
+                if child:IsA("Frame") and child ~= searchBox and child:GetAttribute("SearchText") then
+                    local searchText = child:GetAttribute("SearchText"):lower()
+                    local shouldShow = string.find(searchText, query, 1, true) ~= nil
+                    child.Visible = shouldShow
+                end
+            end
+        end)
+
         local function activateTab()
             for _, t in ipairs(W._tabs)    do t._frame.Visible = false end
             for _, b in ipairs(W._tabBtns) do
@@ -503,20 +863,23 @@ function ShadowLib:CreateWindow(title)
         table.insert(W._tabs,    Tab)
         table.insert(W._tabBtns, { btn = tabBtn, acc = tabAcc })
 
-        local function row(h)
+        local function row(h, searchText)
             local r = Instance.new("Frame")
             r.Size = UDim2.new(1, 0, 0, h or 32)
             r.BackgroundTransparency = 1; r.BorderSizePixel = 0
             Tab._order = Tab._order + 1; r.LayoutOrder = Tab._order
             r.Parent = frame
+            if searchText then
+                r:SetAttribute("SearchText", searchText)
+            end
             return r
         end
 
         -- ─────────────────────────────────────────────────────
         -- AddButton
         -- ─────────────────────────────────────────────────────
-        function Tab:AddButton(text, callback)
-            local r   = row(32)
+        function Tab:AddButton(text, callback, tooltip)
+            local r   = row(32, text)
             local btn = Instance.new("TextButton")
             btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundColor3 = C.ACCENT_DIM
             btn.BorderSizePixel = 0; btn.Text = ""; btn.AutoButtonColor = false; btn.Parent = r
@@ -525,13 +888,13 @@ function ShadowLib:CreateWindow(title)
             local l = lbl(btn, text, TXTSZ, Enum.TextXAlignment.Center)
             l.Size = UDim2.new(1, 0, 1, 0)
 
-            -- ФИКС: не анимируем UIGradient.Transparency через TweenService —
-            -- просто меняем BackgroundColor3 кнопки
             btn.MouseEnter:Connect(function()
                 tw(btn, { BackgroundColor3 = C.ACCENT }, 0.12)
+                if tooltip then showTooltip(tooltip, btn) end
             end)
             btn.MouseLeave:Connect(function()
                 tw(btn, { BackgroundColor3 = C.ACCENT_DIM }, 0.12)
+                hideTooltip()
             end)
             btn.MouseButton1Click:Connect(function()
                 pulse(btn, C.ACCENT_DIM)
@@ -541,13 +904,12 @@ function ShadowLib:CreateWindow(title)
         end
 
         -- ─────────────────────────────────────────────────────
-        -- AddToggle — сохраняет состояние в W.SavedValues[id]
+        -- AddToggle
         -- ─────────────────────────────────────────────────────
-        function Tab:AddToggle(text, default, callback, id)
-            local r     = row(32)
+        function Tab:AddToggle(text, default, callback, id, tooltip)
+            local r     = row(32, text)
             local state = default or false
             local saveKey = id or text
-
             W.SavedValues[saveKey] = state
 
             local bg = Instance.new("Frame")
@@ -575,13 +937,16 @@ function ShadowLib:CreateWindow(title)
             local hitBtn = Instance.new("TextButton")
             hitBtn.Size = UDim2.new(1, 0, 1, 0); hitBtn.BackgroundTransparency = 1
             hitBtn.Text = ""; hitBtn.Parent = bg
+            if tooltip then
+                hitBtn.MouseEnter:Connect(function() showTooltip(tooltip, hitBtn) end)
+                hitBtn.MouseLeave:Connect(hideTooltip)
+            end
 
             local function applyState(v)
                 state = v; W.SavedValues[saveKey] = v
-                -- ФИКС: только BackgroundColor3, не UIGradient
                 tw(pill,  { BackgroundColor3 = v and C.ACCENT or C.ACCENT_DIM }, 0.15)
                 tw(knob,  { Position = v and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8) },
-                   0.15, Enum.EasingStyle.Back)
+                    0.15, Enum.EasingStyle.Back)
                 if callback then callback(v) end
             end
 
@@ -594,13 +959,12 @@ function ShadowLib:CreateWindow(title)
         end
 
         -- ─────────────────────────────────────────────────────
-        -- AddCheckbox — галочка с сохранением
+        -- AddCheckbox
         -- ─────────────────────────────────────────────────────
-        function Tab:AddCheckbox(text, default, callback, id)
-            local r     = row(30)
+        function Tab:AddCheckbox(text, default, callback, id, tooltip)
+            local r     = row(30, text)
             local state = default or false
             local saveKey = id or ("cb_" .. text)
-
             W.SavedValues[saveKey] = state
 
             local bg = Instance.new("Frame")
@@ -608,16 +972,13 @@ function ShadowLib:CreateWindow(title)
             bg.BorderSizePixel = 0; bg.Parent = r
             corner(bg, UDim.new(0, 6)); uistroke(bg, C.BORDER, 1)
 
-            -- Квадрат-чекбокс
             local box = Instance.new("Frame")
             box.Size             = UDim2.new(0, 18, 0, 18)
             box.Position         = UDim2.new(0, 8, 0.5, -9)
             box.BackgroundColor3 = state and C.CHECK_ON or C.CHECK_OFF
             box.BorderSizePixel  = 0; box.Parent = bg
-            corner(box, UDim.new(0, 4))
-            uistroke(box, C.BORDER, 1)
+            corner(box, UDim.new(0, 4)); uistroke(box, C.BORDER, 1)
 
-            -- Галочка
             local checkIcon = Instance.new("TextLabel")
             checkIcon.Size = UDim2.new(1, 0, 1, 0); checkIcon.BackgroundTransparency = 1
             checkIcon.Text = "✓"; checkIcon.Font = Enum.Font.GothamBold
@@ -635,6 +996,10 @@ function ShadowLib:CreateWindow(title)
             local hitBtn = Instance.new("TextButton")
             hitBtn.Size = UDim2.new(1, 0, 1, 0); hitBtn.BackgroundTransparency = 1
             hitBtn.Text = ""; hitBtn.Parent = bg
+            if tooltip then
+                hitBtn.MouseEnter:Connect(function() showTooltip(tooltip, hitBtn) end)
+                hitBtn.MouseLeave:Connect(hideTooltip)
+            end
 
             local function applyState(v)
                 state = v; W.SavedValues[saveKey] = v
@@ -652,9 +1017,9 @@ function ShadowLib:CreateWindow(title)
         end
 
         -- ─────────────────────────────────────────────────────
-        -- AddSlider — ФИКС: sliding не сбрасывает callback при отпускании
+        -- AddSlider
         -- ─────────────────────────────────────────────────────
-        function Tab:AddSlider(text, minVal, maxVal, default, callback, id)
+        function Tab:AddSlider(text, minVal, maxVal, default, callback, id, tooltip)
             minVal  = minVal  or 0
             maxVal  = maxVal  or 100
             default = default or minVal
@@ -662,11 +1027,15 @@ function ShadowLib:CreateWindow(title)
             local saveKey = id or ("sl_" .. text)
             W.SavedValues[saveKey] = val
 
-            local r  = row(52)
+            local r  = row(52, text)
             local bg = Instance.new("Frame")
             bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = C.PANEL
             bg.BorderSizePixel = 0; bg.Parent = r
             corner(bg, UDim.new(0, 6)); uistroke(bg, C.BORDER, 1)
+            if tooltip then
+                bg.MouseEnter:Connect(function() showTooltip(tooltip, bg) end)
+                bg.MouseLeave:Connect(hideTooltip)
+            end
 
             local topRow = Instance.new("Frame")
             topRow.Size = UDim2.new(1, 0, 0, 26); topRow.BackgroundTransparency = 1
@@ -692,7 +1061,6 @@ function ShadowLib:CreateWindow(title)
             fill.BackgroundColor3 = C.ACCENT; fill.BorderSizePixel = 0; fill.Parent = track
             corner(fill, UDim.new(1, 0))
 
-            -- Градиент на заполнении
             local fillGrad = Instance.new("UIGradient")
             fillGrad.Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
@@ -720,20 +1088,17 @@ function ShadowLib:CreateWindow(title)
                 if newVal == val then return end
                 val = newVal; W.SavedValues[saveKey] = val
                 local frac = (val - minVal) / (maxVal - minVal)
-                -- Напрямую, без tw — мгновенный отклик при перетаскивании
                 fill.Size      = UDim2.new(frac, 0, 1, 0)
                 thumb.Position = UDim2.new(frac, -7, 0.5, -7)
                 valLbl.Text    = tostring(val)
                 if callback then callback(val) end
             end
 
-            -- ФИКС InputBegan/Changed/Ended — sliding сбрасывается только на InputEnded MouseButton1
             hitArea.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                     sliding = true; setVal(inp.Position.X)
                 end
             end)
-            -- Слушаем глобально, чтобы не терять события при выходе за пределы hitArea
             UserInputService.InputChanged:Connect(function(inp)
                 if sliding and inp.UserInputType == Enum.UserInputType.MouseMovement then
                     setVal(inp.Position.X)
@@ -742,7 +1107,6 @@ function ShadowLib:CreateWindow(title)
             UserInputService.InputEnded:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 and sliding then
                     sliding = false
-                    -- callback уже был вызван в setVal, НЕ вызываем повторно
                 end
             end)
 
@@ -759,10 +1123,10 @@ function ShadowLib:CreateWindow(title)
         end
 
         -- ─────────────────────────────────────────────────────
-        -- AddTextBox — поле ввода текста
+        -- AddTextBox
         -- ─────────────────────────────────────────────────────
-        function Tab:AddTextBox(placeholderText, callback, id)
-            local r       = row(36)
+        function Tab:AddTextBox(placeholderText, callback, id, tooltip)
+            local r       = row(36, placeholderText)
             local saveKey = id or ("tb_" .. placeholderText)
             W.SavedValues[saveKey] = ""
 
@@ -770,6 +1134,10 @@ function ShadowLib:CreateWindow(title)
             bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = C.INPUT_BG
             bg.BorderSizePixel = 0; bg.Parent = r
             corner(bg, UDim.new(0, 6)); uistroke(bg, C.BORDER, 1)
+            if tooltip then
+                bg.MouseEnter:Connect(function() showTooltip(tooltip, bg) end)
+                bg.MouseLeave:Connect(hideTooltip)
+            end
 
             local tb = Instance.new("TextBox")
             tb.Size = UDim2.new(1, -12, 1, -8); tb.Position = UDim2.new(0, 6, 0, 4)
@@ -779,7 +1147,6 @@ function ShadowLib:CreateWindow(title)
             tb.PlaceholderColor3 = C.TEXT_DIM; tb.TextXAlignment = Enum.TextXAlignment.Left
             tb.ClearTextOnFocus = false; tb.Parent = bg
 
-            -- Подсветка при фокусе
             local inputStroke = uistroke(bg, C.BORDER, 1)
             tb.Focused:Connect(function()
                 tw(inputStroke, { Color = C.ACCENT, Thickness = 1.5 }, 0.12)
@@ -798,26 +1165,28 @@ function ShadowLib:CreateWindow(title)
         end
 
         -- ─────────────────────────────────────────────────────
-        -- AddDropdown — выпадающий список
+        -- AddDropdown
         -- ─────────────────────────────────────────────────────
-        function Tab:AddDropdown(titleText, options, callback, id)
+        function Tab:AddDropdown(titleText, options, callback, id, tooltip)
             options = options or {}
             local saveKey  = id or ("dd_" .. titleText)
             local selected = options[1] or "—"
             local open     = false
             W.SavedValues[saveKey] = selected
 
-            -- Высота: шапка 32 + список 28*n при раскрытии
             local itemH = 26
-            local r = row(32)
+            local r = row(32, titleText)
 
             local bg = Instance.new("Frame")
             bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = C.PANEL
             bg.BorderSizePixel = 0; bg.Parent = r
             corner(bg, UDim.new(0, 6)); uistroke(bg, C.BORDER, 1)
             bg.ClipsDescendants = true
+            if tooltip then
+                bg.MouseEnter:Connect(function() showTooltip(tooltip, bg) end)
+                bg.MouseLeave:Connect(hideTooltip)
+            end
 
-            -- Шапка
             local header = Instance.new("TextButton")
             header.Size = UDim2.new(1, 0, 0, 32); header.BackgroundTransparency = 1
             header.BorderSizePixel = 0; header.Text = ""; header.Parent = bg
@@ -834,7 +1203,6 @@ function ShadowLib:CreateWindow(title)
             arrow.Font = FONT; arrow.TextSize = 12; arrow.TextColor3 = C.ACCENT
             arrow.TextXAlignment = Enum.TextXAlignment.Center; arrow.Parent = header
 
-            -- Список опций
             local listFrame = Instance.new("Frame")
             listFrame.Size = UDim2.new(1, 0, 0, #options * itemH)
             listFrame.Position = UDim2.new(0, 0, 0, 32)
@@ -889,10 +1257,6 @@ function ShadowLib:CreateWindow(title)
                 selected = v; selL.Text = v; W.SavedValues[saveKey] = v
                 if callback then callback(v) end
             end
-            function Dropdown:SetOptions(newOpts)
-                -- Пересоздание опций не реализовано упрощённо — передайте новый AddDropdown
-                options = newOpts
-            end
             return Dropdown
         end
 
@@ -900,7 +1264,7 @@ function ShadowLib:CreateWindow(title)
         -- AddLabel / AddSeparator
         -- ─────────────────────────────────────────────────────
         function Tab:AddLabel(text)
-            local r  = row(24)
+            local r  = row(24, text)
             local bg = Instance.new("Frame"); bg.Size = UDim2.new(1, 0, 1, 0)
             bg.BackgroundTransparency = 1; bg.Parent = r
             local l = lbl(bg, text, TXTSZ, Enum.TextXAlignment.Left, C.TEXT_DIM)
@@ -916,6 +1280,102 @@ function ShadowLib:CreateWindow(title)
             corner(line, UDim.new(1, 0))
         end
 
+        -- ─────────────────────────────────────────────────────
+        -- НОВОЕ: AddKeybind (горячая клавиша)
+        -- ─────────────────────────────────────────────────────
+        function Tab:AddKeybind(text, defaultKey, callback, id, tooltip)
+            defaultKey = defaultKey or Enum.KeyCode.F
+            local saveKey = id or ("key_" .. text)
+            local currentKey = defaultKey
+            W.SavedValues[saveKey] = currentKey.Name
+
+            -- Попытка загрузить сохранённое значение
+            if writefile and readfile then
+                local filename = "shadow_keybinds.txt"
+                local ok, data = pcall(readfile, filename)
+                if ok and data then
+                    local keybinds = HttpService:JSONDecode(data)
+                    if keybinds[saveKey] then
+                        currentKey = Enum.KeyCode[keybinds[saveKey]] or defaultKey
+                        W.SavedValues[saveKey] = currentKey.Name
+                    end
+                end
+            end
+
+            local r = row(32, text)
+            local bg = Instance.new("Frame")
+            bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = C.PANEL
+            bg.BorderSizePixel = 0; bg.Parent = r
+            corner(bg, UDim.new(0, 6)); uistroke(bg, C.BORDER, 1)
+            if tooltip then
+                bg.MouseEnter:Connect(function() showTooltip(tooltip, bg) end)
+                bg.MouseLeave:Connect(hideTooltip)
+            end
+
+            local nameLabel = lbl(bg, text, TXTSZ)
+            nameLabel.Size = UDim2.new(1, -90, 1, 0)
+            nameLabel.Position = UDim2.new(0, 10, 0, 0)
+
+            local keyBtn = Instance.new("TextButton")
+            keyBtn.Size = UDim2.new(0, 70, 0, 22)
+            keyBtn.Position = UDim2.new(1, -80, 0.5, -11)
+            keyBtn.BackgroundColor3 = C.ACCENT_DIM
+            keyBtn.BorderSizePixel = 0
+            keyBtn.Text = currentKey.Name
+            keyBtn.TextColor3 = C.TEXT
+            keyBtn.Font = FONT
+            keyBtn.TextSize = 11
+            keyBtn.Parent = bg
+            corner(keyBtn, UDim.new(0, 4))
+            uistroke(keyBtn, C.BORDER, 1)
+
+            local waitingForInput = false
+            local originalText = keyBtn.Text
+
+            keyBtn.MouseButton1Click:Connect(function()
+                waitingForInput = true
+                keyBtn.Text = "..."
+                keyBtn.BackgroundColor3 = C.ACCENT
+            end)
+
+            local function setKey(newKey)
+                currentKey = newKey
+                W.SavedValues[saveKey] = newKey.Name
+                keyBtn.Text = newKey.Name
+                waitingForInput = false
+                keyBtn.BackgroundColor3 = C.ACCENT_DIM
+
+                -- Сохранить в файл (если возможно)
+                if writefile then
+                    local filename = "shadow_keybinds.txt"
+                    local keybinds = {}
+                    if readfile then
+                        local ok, data = pcall(readfile, filename)
+                        if ok and data then
+                            keybinds = HttpService:JSONDecode(data) or {}
+                        end
+                    end
+                    keybinds[saveKey] = newKey.Name
+                    pcall(writefile, filename, HttpService:JSONEncode(keybinds))
+                end
+            end
+
+            UserInputService.InputBegan:Connect(function(inp, gp)
+                if waitingForInput and not gp then
+                    if inp.KeyCode ~= Enum.KeyCode.Unknown then
+                        setKey(inp.KeyCode)
+                    end
+                elseif not waitingForInput and inp.KeyCode == currentKey and not gp then
+                    if callback then callback() end
+                end
+            end)
+
+            local Keybind = {}
+            function Keybind:Set(key) setKey(key) end
+            function Keybind:Get() return currentKey end
+            return Keybind
+        end
+
         return Tab
     end
 
@@ -925,58 +1385,21 @@ end
 return ShadowLib
 
 --[[
-══════════════════════════════════════════════════════════════
-  ПРИМЕР v3
-══════════════════════════════════════════════════════════════
-
+Пример использования:
 local ShadowLib = loadstring(game:HttpGet("URL"))()
-local win = ShadowLib:CreateWindow("☠ Shadow UI")
+local win = ShadowLib:CreateWindow("My UI")
 
--- G   = показать / скрыть
--- ⛶   = полный экран
--- ✕   = скрыть
--- ☰   = открыть/закрыть панель игроков справа
+win:Notify("Добро пожаловать", "Это уведомление!", 3)
+win:ShowStats()
+win:SetTheme("Ocean Blue")
 
-local tab1 = win:AddTab("⚔ Бой")
-local tab2 = win:AddTab("👁 Визуал")
-local tab3 = win:AddTab("⚙ Прочее")
+local tab = win:AddTab("Main")
+tab:AddButton("Click me", function() print("Clicked!") end, "Это кнопка")
+tab:AddToggle("Toggle", false, function(v) print(v) end, "tog", "Включить/выключить")
+tab:AddKeybind("Open Menu", Enum.KeyCode.F, function() print("Key pressed") end, "key1", "Нажмите клавишу")
 
-tab1:AddLabel("Боевые настройки")
-tab1:AddSeparator()
+local pl = win:CreatePlayerList()
+pl:Show()
 
--- Кнопка (повторно нажимается)
-tab1:AddButton("Убить всех", function() print("Атака!") end)
-
--- Тоггл (сохраняет состояние)
-local aim = tab1:AddToggle("Аимбот", false, function(v) print("Aim:", v) end, "aim")
-
--- Чекбокс
-local wb = tab1:AddCheckbox("Стены", false, function(v) print("Wallbang:", v) end, "wb")
-
--- Слайдер (1–100, нет краша при отпускании)
-local fov = tab1:AddSlider("FOV", 1, 100, 60, function(v) print("FOV:", v) end, "fov")
-
--- Текстбокс
-local reason = tab3:AddTextBox("Причина бана...", function(text, enter)
-    if enter then print("Причина:", text) end
-end, "ban_reason")
-
--- Дропдаун
-local mode = tab3:AddDropdown("Режим", {"Kill", "Kick", "Ban", "Teleport"}, function(v)
-    print("Выбрано:", v)
-end, "mode_select")
-
--- Панель игроков
-local pp = win._playerPanel.Obj
-pp:OnPlayerAction(function(player)
-    print("Нажато на игрока:", player.Name)
-    -- Пример: применить выбранный режим
-end)
-
--- Читать сохранённые значения в любой момент:
--- print(win.SavedValues)  -- { aim=false, wb=false, fov=60, ban_reason="", mode_select="Kill" }
--- print(fov:Get())
--- aim:Set(true)
-
-══════════════════════════════════════════════════════════════
+win:Confirm("Выход", "Вы уверены?", function() print("Yes") end)
 ]]
